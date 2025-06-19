@@ -22,14 +22,14 @@ pip install --upgrade azure-search-documents
 pip install scikit-learn  
 
 ### 환경변수  
-# GPT API  
+#### GPT API  
 OPENAI_API_KEY = "EMar4isrsxWEypquPBauNuNPsOEoHBAJqvoQHj6RWlLfJG8Vu2KCJQQJ99BFACfhMk5XJ3w3AAABACOGhkVF"  
 AZURE_ENDPOINT = "https://nim-openai-005.openai.azure.com/"  
 OPENAI_API_TYPE = "azure"  
 OPENA_API_VERSION = "2024-12-01-preview"  
 GPT_DEPLOYMENT_NAME = "gpt-4o-mini"  
 
-# AI SEARCH API
+#### AI SEARCH API
 SEARCH_KEY = "cQ5ieDeTzVEcUkt32PzduZ8l391LojW2Crygu1XEKFAzSeBe3HeE"  
 SEARCH_ENDPOINT = "https://nim-search-005.search.windows.net"  
 INDEX_NAME = "taskgetn-rag"  
@@ -39,7 +39,7 @@ INDEXER_NAME = "indexer"
 DATA_SOURCE_NAME = "taskgen-blob-datasource"  
 
 
-# BLOB API  
+#### BLOB API  
 AZURE_STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=https;AccountName=nimstorage001;AccountKey=N2nYamdbhb7fKJaUxi9j8VttatWx4RcSVE0tgkcq4sg9R07WrNuXC5qMONT+qKOrc/YJ6xTyzs93+AStrvNrCQ==;EndpointSuffix=core.windows.net"  
 AZURE_CONTAINER_NAME="taskgen"  
 
