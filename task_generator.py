@@ -1,13 +1,14 @@
+from datetime import datetime
 import os
 from dotenv import load_dotenv
 import openai
 import streamlit as st
 import pandas as pd
 import re
-
 from azure.storage.blob import BlobServiceClient
 
 from contents_embedding import (
+    read_blobs,
     remove_similar_questions_by_embedding,
     generate_rag_response,
     create_data_source,
@@ -63,6 +64,32 @@ def get_openai_response(messages):
         return f"Error: {str(e)}"
 
 
+# 텍스트 청크 함수
+def chunk_text(text, chunk_size=7500, overlap=200):
+    chunks = []
+    start = 0
+    while start < len(text):
+        end = start + chunk_size
+        chunk = text[start:end].strip()
+        chunks.append(chunk)
+        start += chunk_size - overlap
+    return chunks
+
+
+# Azure Blob 업로드 함수
+def upload_chunk_to_blob(blob_service_client, container, base_filename, chunks):
+    container_client = blob_service_client.get_container_client(container)
+    uploaded_files = []
+    timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+
+    for i, chunk in enumerate(chunks, 1):
+        blob_name = f"{base_filename}_chunk_{i}_{timestamp}.txt"
+        container_client.upload_blob(name=blob_name, data=chunk, overwrite=True)
+        uploaded_files.append(blob_name)
+
+    return uploaded_files
+
+
 # 응답 파서 함수(엑셀 다운로드용)
 def parse_response(response):
     split_pattern = r"- (" + "|".join(fields) + r")\s*[:\-]?\s*"
@@ -90,7 +117,8 @@ PROMPT_TEMPLATES = {
     "알고리즘": {
         "system_message": """당신은 전문적인 알고리즘 문제 출제자입니다.
 
-        다음 형식으로 문제를 생성하세요:
+        다음 형식으로 문제를 생성하세요.
+        단, 입력과 출력 설명에 '-'(하이픈) 문자는 포함하지 마세요.
         - 문제제목:
         - 문제내용:
         - 입력조건:
@@ -126,42 +154,50 @@ st.title("Task Generator")
 ### UI: 2분할 구성
 col1, col2 = st.columns([1, 2])  # 왼쪽 1, 오른쪽 2 비율
 
-# --------------------------
-# 2. Blob 업로드 후, 인덱싱/인덱서 생성 및 실행
-# --------------------------
-
 with col1:
-    # Blob에 올라간 문서 읽기
-    def read_blobs():
-        documents = []
-        for blob in container_client.list_blobs():
-            blob_client = container_client.get_blob_client(blob)
-            content = blob_client.download_blob().readall().decode("utf-8")
-            documents.append({"id": blob.name, "content": content})
-        return documents
 
     # 파일 업로드 영역
     st.subheader("📄 문서 업로드")
+
     uploaded_file = st.file_uploader(
         "코지가 학습할 문서를 선택해주세요!!", type=["pdf", "txt"]
     )
 
-    # [Azure Blob] > [Index / Indexer] > [AI  Search]
+    # 파일 업로드 후 인덱싱 및 인덱서 생성
     if uploaded_file is not None:
-        blob_name = uploaded_file.name
 
-        if st.button("업로드"):
+        # -----------------------------------
+        # 2. parser & chunk
+        # -----------------------------------
+        file_contents = uploaded_file.read().decode("utf-8")
+        file_name = os.path.splitext(uploaded_file.name)[0]
+
+        chunk_size = st.slider(
+            "청크 크기 (문자 수)", min_value=200, max_value=7500, value=800, step=100
+        )
+        overlap = st.slider(
+            "오버랩 (중복 문자 수)", min_value=0, max_value=500, value=100, step=50
+        )
+        
+        if st.button("업로드", use_container_width=True):
+
             try:
-                container_client.upload_blob(
-                    name=blob_name, data=uploaded_file, overwrite=True
+                chunks = chunk_text(
+                    file_contents, chunk_size=chunk_size, overlap=overlap
+                )
+                blob_service_client = BlobServiceClient.from_connection_string(
+                    connection_string
+                )
+                uploaded_files = upload_chunk_to_blob(
+                    blob_service_client, container_name, file_name, chunks
                 )
                 st.success(
-                    f"✅ `{blob_name}` 파일이 Blob Container에 업로드되었습니다."
+                    f"✅ `{uploaded_file.name}` 파일이 Blob Container에 업로드되었습니다."
                 )
             except Exception as e:
                 st.error(f"❌ 업로드 실패: {str(e)}")
 
-        if st.button("문서 분석"):
+        if st.button("문서 분석", use_container_width=True):
             with st.spinner("문서를 분석하고 AI 검색 준비 중입니다..."):
                 try:
                     create_data_source()
@@ -185,7 +221,7 @@ with col1:
                     )
 
                     st.success(
-                        "✅ 문서 분석 완료! 이제 이 문서를 기반으로 질문할 수 있어요."
+                        "✅ 문서 분석 완료! 이제 이 문서를 기반으로 문제를 생성할 수 있어요!"
                     )
                 except Exception as e:
                     st.error(f"❌ 문서 처리 중 오류 발생: {str(e)}")
@@ -195,12 +231,12 @@ with col1:
     ##############################
 
     # -----------------------------------
-    # 3. 문제 생성
+    # 2. Streamlit 입력 영역
     # -----------------------------------
     st.subheader("🚀 문제 생성")
 
     # 문제 유형 선택 드롭다운 추가
-    problem_type = st.selectbox("문제 유형을 선택하세요:", ("알고리즘", "정보처리기사"))
+    problem_type = st.selectbox("문제 유형을 선택하세요:", ("정보처리기사", "알고리즘"))
 
     # 문제 난이도 선택 드롭다운 추가
     problem_level = st.selectbox(
@@ -212,8 +248,14 @@ with col1:
         "생성할 문제 개수를 입력하세요:", min_value=0, max_value=100, value=2
     )
 
-    # 추가 내용 입력
-    detail = st.text_input("[선택]문제 범위를 구체화 해보세요.")
+    detail = ""
+    if problem_type == "정보처리기사":
+        # 추가 내용 입력
+        detail = st.text_input("(선택) 자신이 부족한 영역을 얘기해 보세요:")
+
+    # -----------------------------------
+    # 3. 문제 생성 버튼 클릭 시
+    # -----------------------------------
 
     # 문제 생성 버튼
     if st.button("문제 생성"):
@@ -239,7 +281,7 @@ with col1:
                 # 문제마다 다른 메세지 생성
                 dynamic_user_message = {
                     "role": "user",
-                    "content": f"{i+1}번째 문제입니다. '{problem_type}' 유형의 '{problem_level}' 난이도로 '{detail}' 관련된 문제를 생성해 주세요. 문제 설명과 답안을 포함해 주세요.",
+                    "content": f"{i+1}번째 문제입니다. '{problem_type}' 유형의 '{problem_level}' 난이도로 '{detail}' 문제를 생성해 주세요. 문제 설명과 답안을 포함해 주세요.",
                 }
 
                 # system message 새로 구성
@@ -251,7 +293,6 @@ with col1:
                 # 유형에 따라 응답 함수 분기
                 if problem_type == "알고리즘":
                     response = get_openai_response(message)
-
                 elif problem_type == "정보처리기사":
                     response = generate_rag_response(message)
                 else:
@@ -267,9 +308,13 @@ with col1:
             if problem_type == "알고리즘":
                 # 데이터 정제
                 df = df.applymap(
-                    lambda x: x.replace("```", "") if isinstance(x, str) else x
+                    lambda x: (
+                        x.replace("```python", "").replace("```", "")
+                        if isinstance(x, str)
+                        else x
+                    )
                 )
-            
+
             df = remove_similar_questions_by_embedding(df, threshold=0.9)
             st.session_state["generated_df"] = df
 
@@ -293,8 +338,8 @@ with col2:
         )
         st.dataframe(df_clean)
     else:
-        st.info("왼쪽에서 문제를 생성하면 여기에 결과가 표시됩니다.")
-        st.stop()
+        st.info("왼쪽에서 문제를 생성하면 결과가 표시됩니다.")
+        st.stop()  # 생성된 문제 없으면 아래 코드 실행 안 되도록 차단
 
     st.divider()
 
@@ -369,8 +414,6 @@ with col2:
             st.warning("정답 데이터가 없습니다. 채점할 수 없습니다.")
         elif submitted == correct:
             st.success("정답입니다! ✅")
-            st.session_state["generated_df"].at[idx, "정답여부"] = "정답"
         else:
             st.error("오답입니다 ❌")
             st.text(f"정답: {correct}")
-            st.session_state["generated_df"].at[idx, "정답여부"] = "오답"

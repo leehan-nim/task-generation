@@ -4,7 +4,6 @@ import requests
 import openai
 import pandas as pd
 import re
-import json
 
 from azure.storage.blob import BlobServiceClient
 from azure.search.documents import SearchClient
@@ -76,13 +75,6 @@ def get_embeddings(texts: list[str]) -> list[list[float]]:
         model=embedding_deployment_name,
     )
     return [d.embedding for d in response.data]
-
-
-#  JSONL 저장
-def save_chunks_to_jsonl(docs, output_path):
-    with open(output_path, "w", encoding="utf-8") as f:
-        for doc in docs:
-            f.write(json.dumps(doc, ensure_ascii=False) + "\n")
 
 
 def create_data_source():
@@ -228,13 +220,14 @@ def search_similar_documents(query: str, k=3) -> list[str]:
         # 2. REST API 호출 설정
         url = f"{search_endpoint}/indexes/{index_name}/docs/search?api-version=2023-07-01-Preview"
         headers = {"Content-Type": "application/json", "api-key": search_key}
-        data = {
+        payload = {
             "vectors": [{"value": query_vector, "fields": "contentvector", "k": k}],
+            "top": k,
             "select": "content",
         }
 
         # 3. POST 요청
-        response = requests.post(url, headers=headers, json=data)
+        response = requests.post(url, headers=headers, json=payload)
 
         if response.status_code != 200:
             print("❌ REST 검색 실패:", response.status_code, response.text)
@@ -243,6 +236,7 @@ def search_similar_documents(query: str, k=3) -> list[str]:
         # 4. 결과 파싱
         result_json = response.json()
         contents = [doc["content"] for doc in result_json.get("value", [])]
+
         print("📄 검색 결과:", contents)
         return contents
 
@@ -253,20 +247,25 @@ def search_similar_documents(query: str, k=3) -> list[str]:
 
 def generate_rag_response(messages: list[dict]) -> str:
     try:
-        # 1. user의 질문 추출
+        # user의 질문 추출
         user_query = next((m["content"] for m in messages if m["role"] == "user"), None)
 
         if not user_query:
             return "❌ 사용자 질문이 없습니다."
 
-        # 2. 유사 문서 검색
+        # 유사 문서 검색
         print("질문내용 포함 gpt에게 던지는 값", user_query)
         contexts = search_similar_documents(user_query)
+
+        # 문서가 없을 경우 안내
+        if not contexts:
+            return "❗ 관련된 문서를 찾을 수 없어 정확한 답변을 드리기 어렵습니다."
+
         context_text = "\n\n".join(contexts)
 
         print("📄 문서 context:", context_text[:200])
 
-        # 3. context를 system message에 추가
+        # context를 system message에 추가
         enhanced_messages = [
             {
                 "role": "system",
@@ -275,7 +274,7 @@ def generate_rag_response(messages: list[dict]) -> str:
             *messages,
         ]
 
-        # 4. GPT 호출
+        # GPT 호출
         response = openai.chat.completions.create(
             model=gpt_deployment_name,
             messages=enhanced_messages,
