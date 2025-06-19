@@ -25,7 +25,16 @@ pip install scikit-learn  </pre>
 ### 배포 가이드  
 ---
 #### 1. Azure Portal 내 'App Service' 리소스 생성  
-#### 2. VSCode에서 "streamlit.sh"와 ".deployment" 파일 생성 후, 필요 환경 세팅
+#### 2. Python 가상환경 생성 및 전환(VSCode Terminal)  
+(1) .venv 파일 생성  
+(2) 환경 전환  
+<pre>
+  python -m venv .venv  
+  .\.venv\Scripts\Activate.ps1  
+</pre>  
+**PowerShell 설치 필요  
+
+#### 3. VSCode에서 "streamlit.sh"와 ".deployment" 파일 생성 후, 필요 환경 세팅
 ![image](https://github.com/user-attachments/assets/1e4cc0bd-64b5-4681-81f4-62b99cf812d2)  
 
 streamlist.sh  
@@ -48,10 +57,10 @@ python -m streamlit run task_generator.py --server.port 8000 --server.address 0.
 SCM_DO_BUILD_DURING_DEPLOYMENT=false  
 </pre>
 
-#### 3. VSCode 내 'Azure App Service' Extension 설치
+#### 4. VSCode 내 'Azure App Service' Extension 설치
 ![image](https://github.com/user-attachments/assets/f559bd97-c44d-48ce-b45d-57b1e2d7afd1)
 
-#### 4. 로컬 코드 APP Service에 배포하기  
+#### 5. 로컬 코드 APP Service에 배포하기  
 (1) vscode > auzre extension > ms 로그인 및 인증 > "Sign in to Tenant" > 연결할 테넌트 선택
 ![image](https://github.com/user-attachments/assets/dbf0ae21-f27b-4b3a-b241-ba73a666f1d3)
 
