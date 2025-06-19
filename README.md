@@ -93,5 +93,7 @@ DATA_SOURCE_NAME = "taskgen-blob-datasource"  </pre>
 
 #### BLOB API  
 <pre>AZURE_STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=https;AccountName=nimstorage001;AccountKey=N2nYamdbhb7fKJaUxi9j8VttatWx4RcSVE0tgkcq4sg9R07WrNuXC5qMONT+qKOrc/YJ6xTyzs93+AStrvNrCQ==;EndpointSuffix=core.windows.net"  
-AZURE_CONTAINER_NAME="taskgen"  </pre>
+AZURE_CONTAINER_NAME="taskgen"  </pre>  
 
+---
+#### 보고 자료 : https://docs.google.com/presentation/d/1nMvmcg_2_BkQWDOjdYvggOBlyjT4YAJy/edit?usp=drive_link&ouid=115816032535397902683&rtpof=true&sd=true
