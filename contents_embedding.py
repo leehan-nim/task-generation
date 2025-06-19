@@ -27,22 +27,30 @@ from azure.search.documents.indexes.models import (
 from dotenv import load_dotenv
 from sklearn.metrics.pairwise import cosine_similarity
 
-load_dotenv()  # 환경변수 불러오기
+# ── 설정 및 클라이언트 초기화 ─────────────────────────────────────────
 
-# OpenAI library 초기화
+load_dotenv()
+
+# openai 설정
 openai.api_key = os.getenv("OPENAI_API_KEY")
 openai.azure_endpoint = os.getenv("AZURE_ENDPOINT")
 openai.api_type = os.getenv("OPENAI_API_TYPE")
 openai.api_version = os.getenv("OPENA_API_VERSION")
-
-# search 관련 설정
 gpt_deployment_name = os.getenv("GPT_DEPLOYMENT_NAME")
 embedding_deployment_name = os.getenv("EMBEDDING_DEPLOYMENT_NAME")
+
+# ai search 설정
 search_key = os.getenv("SEARCH_KEY")
 search_endpoint = os.getenv("SEARCH_ENDPOINT")
 index_name = os.getenv("INDEX_NAME")
 indexer_name = os.getenv("INDEXER_NAME")
 data_source_name = os.getenv("DATA_SOURCE_NAME")
+
+# Azure Storage 설정
+connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+container_name = os.getenv("AZURE_CONTAINER_NAME")
+blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+container_client = blob_service_client.get_container_client(container_name)
 
 # 인증 객체 생성
 credential = AzureKeyCredential(search_key)
@@ -51,14 +59,9 @@ credential = AzureKeyCredential(search_key)
 index_client = SearchIndexClient(endpoint=search_endpoint, credential=credential)
 indexer_client = SearchIndexerClient(endpoint=search_endpoint, credential=credential)
 
-# Azure Storage 설정
-connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
-container_name = os.getenv("AZURE_CONTAINER_NAME")
-blob_service_client = BlobServiceClient.from_connection_string(connection_string)
-container_client = blob_service_client.get_container_client(container_name)
+# ── 핵심 기능 함수 ─────────────────────────────────────────
 
-
-# Blob에서 문서 읽기
+# Blob 문서 READ 함수
 def read_blobs():
     documents = []
     for blob in container_client.list_blobs():
@@ -68,7 +71,7 @@ def read_blobs():
     return documents
 
 
-# 임베딩 모델 호출
+# 임베딩 함수
 def get_embeddings(texts: list[str]) -> list[list[float]]:
     response = openai.embeddings.create(
         input=texts,
@@ -77,6 +80,7 @@ def get_embeddings(texts: list[str]) -> list[list[float]]:
     return [d.embedding for d in response.data]
 
 
+# 데이터 소스 등록 함수
 def create_data_source():
     indexer_client = SearchIndexerClient(
         endpoint=search_endpoint, credential=AzureKeyCredential(search_key)
@@ -93,15 +97,19 @@ def create_data_source():
     indexer_client.create_or_update_data_source_connection(data_source)
 
 
-# 인덱스 생성
+# 인덱스 생성 함수
 def create_index():
+    """
+
+    검색할 문서를 저장·구조화
+
+    """
     index_client = SearchIndexClient(
         endpoint=search_endpoint, credential=AzureKeyCredential(search_key)
     )
 
     vector_dimensions = 1536
 
-    # searchablefiled > max 8192자
     fields = [
         SimpleField(name="id", type="Edm.String", key=True),
         SearchableField(name="content", type="Edm.String"),
@@ -150,14 +158,14 @@ def create_index():
     print("인덱스 생성까지 완료")
 
 
-# blob 파일명 내 특수문자 제거
+# 파일명 전처리 함수
 def sanitize_id(filename: str) -> str:
-    # 확장자 제거 후 안전한 문자만 남김
+    # 확장자 제거
     base = os.path.splitext(filename)[0]
     return re.sub(r"[^a-zA-Z0-9_\-=]", "_", base)
 
 
-# 문서 업로드
+# AI Search 인덱스 문서 업로드 함수
 def upload_documents(documents):
     search_client = SearchClient(
         endpoint=search_endpoint,
@@ -178,9 +186,12 @@ def upload_documents(documents):
 
 
 # 인덱서 생성 함수
-def create_indexer(
+def create_indexer(    
     search_endpoint, search_key, index_name, data_source_name, indexer_name
 ):
+    """
+    실제 데이터 소스를 읽어와 인덱스에 문서를 채워 넣는 ‘색인 실행기’
+    """
     credential = AzureKeyCredential(search_key)
     indexer_client = SearchIndexerClient(
         endpoint=search_endpoint, credential=credential
@@ -192,8 +203,8 @@ def create_indexer(
         target_index_name=index_name,
     )
 
-    # 인덱서 생성
     try:
+        # 인덱서 생성
         indexer_client.create_or_update_indexer(indexer)
         print(f"✅ 인덱서 '{indexer_name}' 생성 또는 업데이트 완료")
     except Exception as e:
@@ -211,13 +222,13 @@ def run_indexer(search_endpoint, search_key, indexer_name):
     print(f"🚀 인덱서 '{indexer_name}' 수동 실행됨")
 
 
-# 벡터 기반 RAG 검색 (Azure AI Search)
+# 벡터 기반 RAG 검색 함수 (Azure AI Search)
 def search_similar_documents(query: str, k=3) -> list[str]:
     try:
-        # 1. 쿼리 벡터 얻기
+        # 쿼리 벡터 얻기
         query_vector = get_embeddings([query])[0]
 
-        # 2. REST API 호출 설정
+        # REST API 호출 설정
         url = f"{search_endpoint}/indexes/{index_name}/docs/search?api-version=2023-07-01-Preview"
         headers = {"Content-Type": "application/json", "api-key": search_key}
         payload = {
@@ -226,14 +237,14 @@ def search_similar_documents(query: str, k=3) -> list[str]:
             "select": "content",
         }
 
-        # 3. POST 요청
+        # POST 요청
         response = requests.post(url, headers=headers, json=payload)
 
         if response.status_code != 200:
             print("❌ REST 검색 실패:", response.status_code, response.text)
             return []
 
-        # 4. 결과 파싱
+        # 결과 파싱
         result_json = response.json()
         contents = [doc["content"] for doc in result_json.get("value", [])]
 
@@ -243,8 +254,9 @@ def search_similar_documents(query: str, k=3) -> list[str]:
     except Exception as e:
         print(f"❌ 예외 발생: {e}")
         return []
+    
 
-
+# RAG기반 질문 응답 함수
 def generate_rag_response(messages: list[dict]) -> str:
     try:
         # user의 질문 추출
@@ -257,7 +269,7 @@ def generate_rag_response(messages: list[dict]) -> str:
         print("질문내용 포함 gpt에게 던지는 값", user_query)
         contexts = search_similar_documents(user_query)
 
-        # 문서가 없을 경우 안내
+        # 문서 내 내용이 없을 경우 안내
         if not contexts:
             return "❗ 관련된 문서를 찾을 수 없어 정확한 답변을 드리기 어렵습니다."
 
@@ -288,7 +300,7 @@ def generate_rag_response(messages: list[dict]) -> str:
         return "❌ 답변 생성 중 오류가 발생했습니다."
 
 
-# 유사도 기반 중복 제거 함수
+# 유사도 기반 중복 제거 함수(유사 문제 생성 방지)
 def remove_similar_questions_by_embedding(
     df: pd.DataFrame, threshold: float = 0.9
 ) -> pd.DataFrame:
