@@ -1,3 +1,7 @@
+"""
+인덱스(메인) 페이지
+"""
+
 from datetime import datetime
 import os
 from dotenv import load_dotenv
