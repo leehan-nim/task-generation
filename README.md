@@ -96,4 +96,5 @@ DATA_SOURCE_NAME = "taskgen-blob-datasource"  </pre>
 AZURE_CONTAINER_NAME="taskgen"  </pre>  
 
 ---
-#### 보고 자료 : https://docs.google.com/presentation/d/1nMvmcg_2_BkQWDOjdYvggOBlyjT4YAJy/edit?usp=drive_link&ouid=115816032535397902683&rtpof=true&sd=true
+#### 발표 자료 : https://docs.google.com/presentation/d/1nMvmcg_2_BkQWDOjdYvggOBlyjT4YAJy/edit?usp=drive_link&ouid=115816032535397902683&rtpof=true&sd=true](https://docs.google.com/presentation/d/16TNyNFK-kExorS_RoAvWDOXIAfVvSZri/edit?usp=sharing&ouid=115816032535397902683&rtpof=true&sd=true  
+### 시연 영상 : https://drive.google.com/file/d/1Xe1uExwIR1fBuZMIg4Ngt6afXvYFhfRQ/view?usp=sharing  
